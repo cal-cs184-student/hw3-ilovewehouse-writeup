@@ -1,6 +1,6 @@
 <html>
 	<head>
-		<script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=default'></script>
+		<script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-AMS_CHTML'></script>
 		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 		<style>
 			h1 {
@@ -23,21 +23,37 @@
 			body {
 				font-family: 'Inter', sans-serif;
 			}
+
+			table.results {
+				border-collapse: collapse;
+				margin: 0 auto;
+			}
+
+			table.results th, table.results td {
+				border: 1px solid #ccc;
+				padding: 6px 12px;
+				text-align: right;
+			}
+
+			table.results th:first-child, table.results td:first-child {
+				text-align: left;
+			}
 		</style>
 	</head>
 	<body>
 		<div class="container">
 		<h1>CS184/284A Fall 2026 Homework 3 Write-Up</h1>
-		<div style="text-align: center;">Names: </div>
+		<div style="text-align: center;">Names: TODO</div>
 
 		<br>
 
-		Link to webpage: (TODO) <a href="https://cs184.eecs.berkeley.edu/fa26">cs184.eecs.berkeley.edu/fa26</a>
-		Link to GitHub repository: (TODO) <a href="https://cs184.eecs.berkeley.edu/fa26">cs184.eecs.berkeley.edu/fa26</a>
-		
+		Link to webpage: <a href="https://cal-cs184-student.github.io/hw3-ilovewehouse-writeup/">cal-cs184-student.github.io/hw3-ilovewehouse-writeup</a>
+		<br>
+		Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilovewehouse">github.com/cal-cs184-student/hw3-ilovewehouse</a>
+
 		<figure>
-			<img src="assets/cornell.png" alt="Cornell Boxes with Bunnies" style="width:70%"/>
-			<figcaption>You can add images with captions!</figcaption>
+			<img src="assets/part2/CBlucy.png" alt="Lucy in a Cornell box, normal shaded" style="width:70%"/>
+			<figcaption>CBlucy.dae (133,796 triangles), normal shading, rendered with our BVH.</figcaption>
 		</figure>
 
 		<!--
@@ -45,62 +61,144 @@
 		-->
 
 		<h2>Overview</h2>
-		Give a high-level overview of what you implemented in this homework. Think about what you've built as a whole. Share your thoughts on what interesting things you've learned from completing the homework.
+		<p>TODO: finish once Parts 3&ndash;5 are done.</p>
+		<p>So far we have the core of the path tracer working. Part 1 generates camera rays and intersects them with triangles and spheres. Part 2 adds a bounding volume hierarchy (BVH), so a ray only gets tested against primitives near its path instead of every primitive in the scene. With the BVH, meshes with over 100,000 triangles render in a fraction of a second.</p>
 
 		<h2>Part 1: Ray Generation and Scene Intersection</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
 
-		<p>Here is an example 2x2 gridlike structure using an HTML table. Each <b>tr</b> is a row and each <b>td</b> is a column in that row. You might find this useful for framing and showing your result images in an organized fashion.</p>
+		<h3>Ray generation and the rendering pipeline</h3>
+		<p><b>PathTracer::raytrace_pixel(x, y)</b> estimates a pixel's color by averaging ns_aa random samples. For each sample we take the pixel's bottom left corner plus a uniform random offset in \([0,1)^2\) from gridSampler, divide by the image width and height to get normalized coordinates in \([0,1]^2\), and call camera-&gt;generate_ray. Each ray goes to est_radiance_global_illumination, and the pixel's value is the average radiance over all of its samples.</p>
+
+		<p><b>Camera::generate_ray(x, y)</b> turns normalized image coordinates into a world space ray. In camera space the camera sits at the origin looking down \(-z\), and the sensor lies on the plane \(z = -1\) with half width and half height</p>
+		\[ w = \tan\left(\frac{hFov}{2}\right), \qquad h = \tan\left(\frac{vFov}{2}\right). \]
+		<p>\((0, 0)\) maps to the sensor's bottom left corner and \((1, 1)\) to its top right corner, so the sample point on the sensor is</p>
+		\[ \mathbf{p}_{cam} = \big( (2x - 1)\, w,\; (2y - 1)\, h,\; -1 \big). \]
+		<p>Since the camera is at the origin, this point is also the ray direction in camera space. We rotate it into world space with c2w, normalize it, and use the camera position pos as the origin. min_t and max_t are set to nClip and fClip, so only geometry between the near and far clipping planes can be hit.</p>
+
+		<h3>Primitive intersection</h3>
+		<p>Each primitive has has_intersection, which only reports whether there is a hit and will be used for shadow rays later, and intersect, which also fills in an Intersection. Both accept a hit only if its \(t\) is within [min_t, max_t], and both set r.max_t = t when they find one. Any primitive tested afterward then has to be closer to count, so once everything has been tested the Intersection holds the nearest hit.</p>
+
+		<p><b>Triangles.</b> We used the M&ouml;ller&ndash;Trumbore algorithm. A point in triangle \((P_1, P_2, P_3)\) can be written as \((1 - b_1 - b_2)P_1 + b_1 P_2 + b_2 P_3\), and setting that equal to the ray \(O + tD\) gives a 3&times;3 linear system in \(t, b_1, b_2\). With \(E_1 = P_2 - P_1\), \(E_2 = P_3 - P_1\), \(S = O - P_1\), \(S_1 = D \times E_2\) and \(S_2 = S \times E_1\), Cramer's rule gives</p>
+		\[ t = \frac{S_2 \cdot E_2}{S_1 \cdot E_1}, \qquad b_1 = \frac{S_1 \cdot S}{S_1 \cdot E_1}, \qquad b_2 = \frac{S_2 \cdot D}{S_1 \cdot E_1}. \]
+		<p>If \(|S_1 \cdot E_1| < 10^{-8}\), the ray is parallel to the triangle and we return no hit. Otherwise it's a hit when \(b_1 \ge 0\), \(b_2 \ge 0\), \(b_1 + b_2 \le 1\), and \(t\) is inside the ray's range. On a hit, intersect stores \(t\), the primitive, its BSDF, and the normal, which we interpolate from the vertex normals as \((1 - b_1 - b_2)\,n_1 + b_1 n_2 + b_2 n_3\). The barycentric coordinates come out of the same computation as the hit test, so the normal costs almost nothing extra.</p>
+
+		<p><b>Spheres.</b> For a sphere with center \(\mathbf{o}\) and radius \(R\), plugging the ray into \(\lVert \mathbf{p} - \mathbf{o} \rVert^2 - R^2 = 0\) gives \(at^2 + bt + c = 0\) with \(a = D \cdot D\), \(b = 2(O - \mathbf{o}) \cdot D\), and \(c = \lVert O - \mathbf{o} \rVert^2 - R^2\). If the discriminant is negative, there's no hit. Otherwise we use the smaller root \(t_1\) if it's at least min_t, and the larger root \(t_2\) if not, which happens for example when the ray starts inside the sphere. The chosen root still has to be within [min_t, max_t]. The normal is the unit vector from the center to the hit point.</p>
+
+		<h3>Results</h3>
+		<p>Normal shaded renders of a few small scenes. Each pixel shows the surface normal, remapped from \([-1, 1]\) to \([0, 1]\) and displayed as RGB. All are 800&times;600 at 1 sample per pixel.</p>
 		<div style="display: flex; flex-direction: column; align-items: center;">
 			<table style="width: 100%; text-align: center; border-collapse: collapse;">
 			  <tr>
 				<td style="text-align: center;">
-				  <img src="assets/cornell.png" width="400px"/>
-				  <figcaption>Caption goes here.</figcaption>
+				  <img src="assets/part1/CBspheres_lambertian.png" width="400px"/>
+				  <figcaption>CBspheres_lambertian.dae (sphere intersection)</figcaption>
 				</td>
 				<td style="text-align: center;">
-				  <img src="assets/cornell.png" width="400px"/>
-				  <figcaption>Caption goes here.</figcaption>
+				  <img src="assets/part1/CBempty.png" width="400px"/>
+				  <figcaption>CBempty.dae</figcaption>
 				</td>
 			  </tr>
 			  <tr>
 				<td style="text-align: center;">
-				  <img src="assets/cornell.png" width="400px"/>
-				  <figcaption>Caption goes here.</figcaption>
+				  <img src="assets/part1/cow.png" width="400px"/>
+				  <figcaption>cow.dae (5,856 triangles)</figcaption>
 				</td>
 				<td style="text-align: center;">
-				  <img src="assets/cornell.png" width="400px"/>
-				  <figcaption>Caption goes here.</figcaption>
+				  <img src="assets/part1/teapot.png" width="400px"/>
+				  <figcaption>teapot.dae (2,464 triangles)</figcaption>
+				</td>
+			  </tr>
+			  <tr>
+				<td style="text-align: center;">
+				  <img src="assets/part1/banana.png" width="400px"/>
+				  <figcaption>banana.dae (2,458 triangles)</figcaption>
+				</td>
+				<td style="text-align: center;">
+				  <img src="assets/part1/CBcoil.png" width="400px"/>
+				  <figcaption>CBcoil.dae (7,884 triangles)</figcaption>
 				</td>
 			  </tr>
 			</table>
 		</div>
-		
+
 		<h2>Part 2: Bounding Volume Hierarchy</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+		<h3>BVH construction</h3>
+		<p><b>BVHAccel::construct_bvh(start, end, max_leaf_size)</b> builds the tree recursively over a range of the primitive vector. We first compute the bounding box of all primitives in the range and create a node with it. If the range has at most max_leaf_size primitives, the node becomes a leaf that stores the start/end iterators, and we return it. Otherwise, we build a second box around just the primitives' centroids, pick the axis where that box is longest, and split at the box's midpoint along that axis. std::partition reorders the range in place so primitives with centroids below the split come first. If every primitive ends up on one side, which only happens when all the centroids are at the same point, we split the range in half by count instead, so both children are nonempty and the recursion always terminates. Finally, we recurse on the two halves to build the left and right children.</p>
+
+		<p><b>Splitting heuristic.</b> We look at the centroids of the primitives in the node, find the axis along which they are most spread out, and split at the middle of that spread. Splitting along the longest axis tends to put primitives that are far apart into different children. That way the two child boxes overlap less, and a ray that passes through one box often misses the other. We used the centroids instead of the node's full bounding box because one large triangle can make the full box much bigger than where most primitives actually are. Splitting at the middle of that box could put almost everything on one side. This heuristic is also cheap: finding the split takes one pass over the node's primitives with no sorting, and building the BVH for Lucy's 133,796 triangles takes about 0.04 seconds. A median split or the surface area heuristic would probably give a better tree, but this was fast enough for every scene we tried.</p>
+
+		<h3>BVH traversal</h3>
+		<p><b>Ray&ndash;box test.</b> <b>BBox::intersect</b> uses the slab method. For each axis we compute where the ray crosses the box's two planes, \(t = (\text{plane} - O_a) / D_a\) using the precomputed inv_d, and swap the two values if the ray is moving in the negative direction. The ray is inside the box from the latest entry time to the earliest exit time across the three axes, clipped to the incoming \([t_0, t_1]\). If the entry time is after the exit time, the ray misses.</p>
+
+		<p><b>Traversal.</b> <b>BVHAccel::intersect</b> first tests the ray against the node's box over [min_t, max_t] and returns early on a miss, skipping the whole subtree. At a leaf we test every primitive in the node. At an interior node we recurse into both children, since the nearest hit could be in either one. Primitive hits shrink r.max_t, so boxes that lie entirely behind the nearest hit found so far fail the box test and are skipped. has_intersection works the same way but returns on the first hit, since shadow rays don't need the nearest one.</p>
+
+		<h3>Large scenes</h3>
+		<p>These meshes have 40,000 to 134,000 triangles. Each rendered in under 0.05 seconds with the BVH at 800&times;600, 1 sample per pixel, using 14 threads.</p>
+		<div style="display: flex; flex-direction: column; align-items: center;">
+			<table style="width: 100%; text-align: center; border-collapse: collapse;">
+			  <tr>
+				<td style="text-align: center;">
+				  <img src="assets/part2/maxplanck.png" width="400px"/>
+				  <figcaption>maxplanck.dae (50,801 triangles)</figcaption>
+				</td>
+				<td style="text-align: center;">
+				  <img src="assets/part2/peter.png" width="400px"/>
+				  <figcaption>peter.dae (40,018 triangles)</figcaption>
+				</td>
+			  </tr>
+			  <tr>
+				<td style="text-align: center;">
+				  <img src="assets/part2/beast.png" width="400px"/>
+				  <figcaption>beast.dae (64,618 triangles)</figcaption>
+				</td>
+				<td style="text-align: center;">
+				  <img src="assets/part2/dragon.png" width="400px"/>
+				  <figcaption>dragon.dae (105,120 triangles)</figcaption>
+				</td>
+			  </tr>
+			  <tr>
+				<td style="text-align: center;">
+				  <img src="assets/part2/CBlucy.png" width="400px"/>
+				  <figcaption>CBlucy.dae (133,796 triangles)</figcaption>
+				</td>
+				<td style="text-align: center;">
+				  <img src="assets/part2/CBdragon.png" width="400px"/>
+				  <figcaption>CBdragon.dae (100,012 triangles)</figcaption>
+				</td>
+			  </tr>
+			</table>
+		</div>
+
+		<h3>Speedup from the BVH</h3>
+		<p>We rendered each scene twice: once with our BVH, and once with the same code built to skip it, so every ray is tested against every primitive. Both ran single threaded at 400&times;300 with 1 sample per pixel, which is 120,000 camera rays. We used one thread to keep the timing fair and the intersection counters exact, since the counters aren't thread safe. A few notes on the table:</p>
+		<ul>
+			<li>Times are render time only. They don't include building the BVH, which takes about 0.04 s for Lucy and less for the smaller meshes.</li>
+			<li>"Primitive tests/ray" counts ray&ndash;primitive tests. Ray&ndash;box tests inside the BVH aren't counted.</li>
+			<li>At 400&times;300, the starter camera keeps the same screen distance, so these renders are roughly a 2&times; zoomed in crop of the 800&times;600 images above.</li>
+		</ul>
+		<table class="results">
+			<tr><th>Scene</th><th>Triangles</th><th>Time without BVH</th><th>Time with BVH</th><th>Speedup</th><th>Primitive tests/ray without BVH</th><th>Primitive tests/ray with BVH</th></tr>
+			<tr><td>teapot.dae</td><td>2,464</td><td>2.03 s</td><td>0.039 s</td><td>52&times;</td><td>2,464</td><td>8.9</td></tr>
+			<tr><td>cow.dae</td><td>5,856</td><td>7.18 s</td><td>0.040 s</td><td>179&times;</td><td>5,856</td><td>8.1</td></tr>
+			<tr><td>peter.dae</td><td>40,018</td><td>72.8 s</td><td>0.049 s</td><td>1,476&times;</td><td>40,018</td><td>6.4</td></tr>
+			<tr><td>maxplanck.dae</td><td>50,801</td><td>77.4 s</td><td>0.073 s</td><td>1,055&times;</td><td>50,801</td><td>10.2</td></tr>
+			<tr><td>CBlucy.dae</td><td>133,796</td><td>193.6 s</td><td>0.028 s</td><td>6,841&times;</td><td>133,796</td><td>3.4</td></tr>
+		</table>
+
+		<p>Without the BVH, every ray is tested against every triangle, so tests per ray equal the triangle count and render time grows roughly linearly with it. It isn't exactly linear: Lucy has about 54&times; as many triangles as the teapot but took about 95&times; as long, over three minutes for a 400&times;300 image. Dividing each time by the total number of tests, the cost per test goes from about 7 ns on the teapot to 12&ndash;15 ns on the three largest meshes. Our guess is that the bigger meshes no longer fit in cache, but we didn't measure that. With the BVH, every scene needed only about 3 to 10 primitive tests per ray and rendered in under a tenth of a second. The speedup ranges from 52&times; on the teapot to about 6,800&times; on Lucy and mostly increases with triangle count, though peter, with 40k triangles, got a bigger speedup than maxplanck with 51k. In theory the work per ray should grow with tree depth, which is logarithmic in \(N\), but our numbers don't show a clear trend. Tests per ray seem to depend more on how the mesh fills the frame than on its triangle count. Lucy had both the fewest tests per ray and the fastest BVH render. In this framing most of its rays hit the Cornell box's large, flat walls, and we expect rays that pass beside the statue to reject its subtree after only a few box tests, although we didn't count box tests. Including Lucy's 0.04 s BVH build, its end to end speedup is still around 2,900&times;.</p>
 
 		<h2>Part 3: Direct Illumination</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+		<p>TODO</p>
 
 		<h2>Part 4: Global Illumination</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+		<p>TODO</p>
 
 		<h2>Part 5: Adaptive Sampling</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+		<p>TODO</p>
 
 		<h2>(Optional) Part 6: Extra Credit Opportunities</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-		
-		<h2>Additional Notes (please remove)</h2>
-		<ul>
-			<li>You can also add code if you'd like as so: <code>code code code</code></li>
-			<li>If you'd like to add math equations, 
-				<ul>
-					<li>You can write inline equations like so: \( a^2 + b^2 = c^2 \)</li>
-					<li>You can write display equations like so: \[ a^2 + b^2 = c^2 \]</li>
-				</ul>
-			</li>
-		</ul>
+		<p>TODO</p>
 		</div>
 	</body>
 </html>
