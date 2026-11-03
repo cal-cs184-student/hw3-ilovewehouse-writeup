@@ -85,7 +85,7 @@
 		<p><b>Spheres.</b> For a sphere with center \(\mathbf{o}\) and radius \(R\), plugging the ray into \(\lVert \mathbf{p} - \mathbf{o} \rVert^2 - R^2 = 0\) gives \(at^2 + bt + c = 0\) with \(a = D \cdot D\), \(b = 2(O - \mathbf{o}) \cdot D\), and \(c = \lVert O - \mathbf{o} \rVert^2 - R^2\). If the discriminant is negative, there's no hit. Otherwise we use the smaller root \(t_1\) if it's at least min_t, and the larger root \(t_2\) if not, which happens for example when the ray starts inside the sphere. The chosen root still has to be within [min_t, max_t]. The normal is the unit vector from the center to the hit point.</p>
 
 		<h3>Results</h3>
-		<p>Normal shaded renders of a few small scenes. Each pixel shows the surface normal, remapped from \([-1, 1]\) to \([0, 1]\) and displayed as RGB. All are 800&times;600 at 1 sample per pixel.</p>
+		<p>Normal shaded renders of a few small scenes. Each pixel shows the surface normal, remapped from \([-1, 1]\) to \([0, 1]\) and displayed as RGB. All are 480&times;360 at 1 sample per pixel.</p>
 		<div style="display: flex; flex-direction: column; align-items: center;">
 			<table style="width: 100%; text-align: center; border-collapse: collapse;">
 			  <tr>
@@ -134,7 +134,7 @@
 		<p><b>Traversal.</b> <b>BVHAccel::intersect</b> first tests the ray against the node's box over [min_t, max_t] and returns early on a miss, skipping the whole subtree. At a leaf we test every primitive in the node. At an interior node we recurse into both children, since the nearest hit could be in either one. Primitive hits shrink r.max_t, so boxes that lie entirely behind the nearest hit found so far fail the box test and are skipped. has_intersection works the same way but returns on the first hit, since shadow rays don't need the nearest one.</p>
 
 		<h3>Large scenes</h3>
-		<p>These meshes have 40,000 to 134,000 triangles. Each rendered in under 0.05 seconds with the BVH at 800&times;600, 1 sample per pixel, using 14 threads.</p>
+		<p>These meshes have 40,000 to 134,000 triangles. With the BVH, each rendered in under 0.05 seconds at 800&times;600 with 1 sample per pixel on 14 threads. The images below are 480&times;360.</p>
 		<div style="display: flex; flex-direction: column; align-items: center;">
 			<table style="width: 100%; text-align: center; border-collapse: collapse;">
 			  <tr>
@@ -175,7 +175,7 @@
 		<ul>
 			<li>Times are render time only. They don't include building the BVH, which takes about 0.04 s for Lucy and less for the smaller meshes.</li>
 			<li>"Primitive tests/ray" counts ray&ndash;primitive tests. Ray&ndash;box tests inside the BVH aren't counted.</li>
-			<li>At 400&times;300, the starter camera keeps the same screen distance, so these renders are roughly a 2&times; zoomed in crop of the 800&times;600 images above.</li>
+			<li>At 400&times;300, the starter camera keeps the same screen distance, so these renders are roughly a 2&times; zoomed in crop of the same scenes rendered at 800&times;600.</li>
 		</ul>
 		<table class="results">
 			<tr><th>Scene</th><th>Triangles</th><th>Time without BVH</th><th>Time with BVH</th><th>Speedup</th><th>Primitive tests/ray without BVH</th><th>Primitive tests/ray with BVH</th></tr>
@@ -190,6 +190,62 @@
 
 		<h2>Part 3: Direct Illumination</h2>
 		<p>TODO</p>
+
+		<h3>Uniform hemisphere sampling vs. light sampling</h3>
+		<div style="display: flex; flex-direction: column; align-items: center;">
+			<table style="width: 100%; text-align: center; border-collapse: collapse;">
+			  <tr>
+				<th>Uniform hemisphere sampling</th>
+				<th>Light sampling</th>
+			  </tr>
+			  <tr>
+				<td style="text-align: center;">
+				  <img src="assets/part3/CBbunny_hemisphere.png" width="400px"/>
+				  <figcaption>CBbunny.dae, hemisphere (-s 64 -l 32)</figcaption>
+				</td>
+				<td style="text-align: center;">
+				  <img src="assets/part3/CBbunny_importance.png" width="400px"/>
+				  <figcaption>CBbunny.dae, light sampling (-s 64 -l 32)</figcaption>
+				</td>
+			  </tr>
+			  <tr>
+				<td style="text-align: center;">
+				  <img src="assets/part3/CBspheres_lambertian_hemisphere.png" width="400px"/>
+				  <figcaption>CBspheres_lambertian.dae, hemisphere (-s 64 -l 32)</figcaption>
+				</td>
+				<td style="text-align: center;">
+				  <img src="assets/part3/CBspheres_lambertian_importance.png" width="400px"/>
+				  <figcaption>CBspheres_lambertian.dae, light sampling (-s 64 -l 32)</figcaption>
+				</td>
+			  </tr>
+			</table>
+		</div>
+
+		<h3>Soft shadow noise vs. number of light rays</h3>
+		<div style="display: flex; flex-direction: column; align-items: center;">
+			<table style="width: 100%; text-align: center; border-collapse: collapse;">
+			  <tr>
+				<td style="text-align: center;">
+				  <img src="assets/part3/CBbunny_l1.png" width="400px"/>
+				  <figcaption>1 light ray (CBbunny.dae, -s 1 -l 1)</figcaption>
+				</td>
+				<td style="text-align: center;">
+				  <img src="assets/part3/CBbunny_l4.png" width="400px"/>
+				  <figcaption>4 light rays (CBbunny.dae, -s 1 -l 4)</figcaption>
+				</td>
+			  </tr>
+			  <tr>
+				<td style="text-align: center;">
+				  <img src="assets/part3/CBbunny_l16.png" width="400px"/>
+				  <figcaption>16 light rays (CBbunny.dae, -s 1 -l 16)</figcaption>
+				</td>
+				<td style="text-align: center;">
+				  <img src="assets/part3/CBbunny_l64.png" width="400px"/>
+				  <figcaption>64 light rays (CBbunny.dae, -s 1 -l 64)</figcaption>
+				</td>
+			  </tr>
+			</table>
+		</div>
 
 		<h2>Part 4: Global Illumination</h2>
 		<p>TODO</p>
