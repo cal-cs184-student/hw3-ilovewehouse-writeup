@@ -56,9 +56,9 @@ Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilo
 <h2>Part 1: Ray Generation and Scene Intersection</h2>
 
 <h3>Ray generation and the rendering pipeline</h3>
-<p>To render each pixel, we take several samples at random positions inside the pixel and average their colors. First, for each sample we add a random offset in \([0,1)^2\) to the pixel's bottom left corner. We then divide by the width and height of the image to convert it into coordinates in \([0,1]^2\). These coordinates are passed into the camera to generate a ray. We trace the ray and get its radiance, and after doing this for all samples we average them to get the final pixel color.</p>
+<p>To render each pixel we take several samples at random positions inside the pixel and average their colors. For each sample we add a random offset in \([0,1)^2\) to the pixel's bottom left corner. After this we divide by the width and height of the image to convert the coordinates appropriately. We then pass this to the camera to generate a ray. We trace the ray and get its radiance. Averaging all of these samples gives us the final pixel color.</p>
 
-<p>For ray generation, we first use camera space, with the camera at the origin looking in the \(-z\) direction. The sensor plane is at \(z=-1\). From the horizontal and vertical field of view we calculate the half width and height of the sensor:</p>
+<p>For ray generation we use camera space with the camera at the origin looking in the \(-z\) direction. The sensor plane is at \(z=-1\). From the horizontal and vertical field of view we calculate the half width and height of the sensor:</p>
 
 \[ w = \tan\left(\frac{hFov}{2}\right), \qquad h = \tan\left(\frac{vFov}{2}\right). \]
 
@@ -66,14 +66,14 @@ Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilo
 
 \[ \mathbf{p}_{cam} = \big( (2x - 1)\, w,\; (2y - 1)\, h,\; -1 \big). \]
 
-<p>Because the camera is at the origin, we can use this position as the direction of the ray in camera space. We transform it into world space using the camera to world matrix and normalize the direction. The ray starts at the camera position. We also set its minimum and maximum \(t\) using the near and far clipping distances, so intersections outside of that range are ignored.</p>
+<p>We use this position as the direction of the ray in camera space since the camera is at the origin. We then transform it into world space using the camera-to-world matrix and normalize the direction.</p>
 
 <h3>Primitive intersection</h3>
 <p>For each primitive, we implemented two intersection functions. One function only returns whether the ray intersects the primitive, which we use for shadow rays. The other function also stores the intersection information such as \(t\), the normal and the material. We check that the intersection is between the minimum and maximum \(t\) of the ray. When we find a valid hit, we update the maximum \(t\) to the new value. Thus, later intersections only count if they are closer than the previous one, so we end up with the closest intersection.</p>
 
-<p><b>Triangles.</b> For triangles, we used the Moller Trumbore algorithm. We can represent a point on a triangle using barycentric coordinates, similar to what we did in HW1. By setting this equal to the ray equation, we solve for the distance \(t\) and two barycentric weights using dot and cross products. If the ray is parallel to the triangle, we reject it. Otherwise we check whether all three weights are nonnegative and whether \(t\) is inside the ray's range. We also use the barycentric weights to interpolate the three vertex normals and get the normal at the intersection point.</p>
+<p><b>Triangles.</b> For triangles, the Moller Trumbore algorithm was used. We represented a point on the triangle with barycentric coordinates. By setting this equal to the ray equation, we solve for the distance \(t\) and two barycentric weights using dot and cross products. If the ray is parallel to the triangle, we reject it. Otherwise we check whether all three weights are nonnegative and whether \(t\) is inside the ray's range. We also use the barycentric weights to interpolate the three vertex normals and get the normal at the intersection point.</p>
 
-<p><b>Spheres.</b> For the sphere intersection, we used the sphere equation with center \(\mathbf{o}\) and radius \(R\). By substituting the ray into \(\lVert \mathbf{p}-\mathbf{o}\rVert^2-R^2=0\), we get a quadratic equation \(at^2+bt+c=0\), where \(a=D\cdot D\), \(b=2(O-\mathbf{o})\cdot D\) and \(c=\lVert O-\mathbf{o}\rVert^2-R^2\). If the discriminant is negative, there is no intersection. Otherwise we first check the smaller root \(t_1\), and if it is before the minimum \(t\), we check the larger root \(t_2\). This also handles the case where the ray starts inside the sphere. We still check that the chosen root is in range. For the normal, we take the normalized vector from the sphere center to the hit point.</p>
+<p><b>Spheres.</b> For the sphere intersection we used the sphere equation with center \(\mathbf{o}\) and radius \(R\). Substituting the ray into \(\lVert \mathbf{p}-\mathbf{o}\rVert^2-R^2=0\) gives a quadratic equation \(at^2+bt+c=0\) where \(a=D\cdot D\), \(b=2(O-\mathbf{o})\cdot D\) and \(c=\lVert O-\mathbf{o}\rVert^2-R^2\). If the discriminant is negative there is no intersection. Otherwise we first check the smaller root \(t_1\). If it is before the minimum \(t\) we check the larger root \(t_2\) instead. This also handles the case where the ray starts inside the sphere. We still check that the chosen root is in range. For the normal we take the normalized vector from the sphere center to the hit point.</p>
 
 <h3>Results</h3>
 <p>Below are our normal shaded results for some of the given scenes. We map each normal from \([-1,1]\) to \([0,1]\) and display it as an RGB color. All images are rendered at 480×360 with 1 sample per pixel.</p>
@@ -116,11 +116,11 @@ Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilo
 <h2>Part 2: Bounding Volume Hierarchy</h2>
 
 <h3>BVH construction</h3>
-<p>For the BVH, we used a recursive construction. First we get the range of primitives for the current node and calculate a bounding box that contains all of them. If the number of primitives is small enough, we make it a leaf node and stop splitting. Otherwise we need to divide the primitives into two groups.</p>
+<p>For the BVH a recursive construction was used. We first get the range of primitives for the current node and calculate a bounding box that contains all of them. If the number of primitives is small enough we make a leaf node and stop splitting. Otherwise we split them into two groups.</p>
 
-<p>To divide them, we calculate a bounding box of the primitive centroids, which are their center positions. We choose the longest axis of this box and use its midpoint as the split position. Primitives whose centroids are on one side go to the left child, and the remaining ones go to the right child. We rearrange the primitives so the two groups are together, then recursively build the two child nodes.</p>
+<p>To split them we calculate a bounding box of the primitive centroids. We choose the longest axis of this box and use its midpoint as the split position. Primitives are split according to which side of the midpoint their centroids are on. We then rearrange the primitives so the two groups are together and recursively build the two child nodes.</p>
 
-<p>One edge case we handled is when all the centroids are at the same position. In that case the midpoint split puts all primitives into one group, so the recursion would not make progress. Hence, in that case we divide the range into two halves by the number of primitives instead.</p>
+<p>One edge case we considered is when all the centroids are at the same position. This would fail to split the primitives so we just divide the range into two halves by the number of primitives instead.</p>
 
 <p><b>Splitting heuristic.</b> We chose the longest axis of the centroid bounding box because this is where the primitives are spread out the most. Splitting across this direction can reduce overlap between the two child boxes, so it is easier to skip one of them when tracing a ray. We used the centroid box instead of the whole primitive bounding box because one large triangle could make that box much bigger, even when most of the other triangles are close together.</p>
 
@@ -129,7 +129,7 @@ Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilo
 <h3>BVH traversal</h3>
 <p><b>Bounding box test.</b> We used the slab method to check whether a ray intersects a bounding box. For each of the x, y and z axes, we calculate the two \(t\) values where the ray crosses the box planes, using \(t=(\text{plane}-O_a)/D_a\). We precompute \(1/D_a\), and swap the two values if the ray is traveling in the negative direction. We then take the latest entry time and earliest exit time over all three axes, while also checking the valid ray interval. If the entry is after the exit, the ray misses the box.</p>
 
-<p><b>Traversal.</b> Starting from the root, we first test if the ray intersects the node's bounding box. If it does not, we can skip everything in that node. If the node is a leaf, we check the primitives stored inside it. Otherwise we recursively check both children, since an intersection could be in either child. Whenever we find a closer primitive, we update the ray's maximum \(t\), just like in Part 1. Thus, we can skip boxes that are farther away than the closest hit found so far. For shadow rays, we return once we find any intersection, since we only need to know whether something blocks the light.</p>
+<p><b>Traversal.</b> Starting from the root we check if the ray intersects the node's bounding box. If it does not we skip that node. If the node is a leaf we check the primitives stored inside it. Otherwise we recursively check both children. Whenever we find a closer primitive we update the ray's maximum \(t\). This way we can skip boxes that are farther away than the closest hit found so far. For shadow rays we return once we find any intersection since we only need to know whether something blocks the light.</p>
 
 <h3>Large scenes</h3>
 <p>We also tested our BVH on larger meshes with about 40,000 to 134,000 triangles. All of these rendered in under 0.05 seconds at 800×600 with 1 sample per pixel using 14 threads. The screenshots below are shown at 480×360.</p>
@@ -170,13 +170,7 @@ Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilo
 </div>
 
 <h3>Speedup from the BVH</h3>
-<p>To measure the speedup, we rendered the same scenes with and without our BVH. Without the BVH, each ray is checked against every primitive. For this comparison we used 400×300 resolution, 1 sample per pixel, and only one thread. We used one thread so the timing is comparable and because our intersection counters are not thread safe. The table shows the render time and the average number of times each ray was tested against a primitive. A few details about the measurements are listed below:</p>
-
-<ul>
-<li>Times are just the render time. They don't include building the BVH, which takes about 0.04 s for Lucy and less for the smaller meshes.</li>
-<li>"Primitive tests/ray" only counts tests against primitives. Tests against the BVH boxes aren't counted.</li>
-<li>At 400×300, the starter camera keeps the same screen distance, so these renders are roughly a 2× zoomed in crop of the same scenes rendered at 800×600.</li>
-</ul>
+<p>To measure the speedup we rendered the same scenes with and without our BVH. Without the BVH each ray is checked against every primitive. For this comparison we used 400×300 resolution and 1 sample per pixel on a single thread so the timings are comparable. The table shows the render time and the average number of times each ray was tested against a primitive. The times only include rendering and not building the BVH, which takes about 0.04 s for Lucy. The primitive tests per ray also only count tests against primitives and not against the BVH boxes.</p>
 
 <table class="results">
 <tr><th>Scene</th><th>Triangles</th><th>Time without BVH</th><th>Time with BVH</th><th>Speedup</th><th>Primitive tests/ray without BVH</th><th>Primitive tests/ray with BVH</th></tr>
@@ -194,12 +188,12 @@ Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilo
 <h2>Part 3: Direct Illumination</h2>
 
 <h3>Direct lighting</h3>
-<p>For direct lighting, we first implemented the diffuse BSDF, which just returns the reflectance divided by \(\pi\) since a diffuse surface reflects light equally in all directions. For zero bounce lighting we return the emission of the surface the camera ray hits, so the only thing that shows up is the area light. Then we implemented two ways to estimate the direct light at a hit point. Both of them estimate the reflection equation with Monte Carlo:</p>
+<p>For this part we used the diffuse BSDF which returns the reflectance divided by \(\pi\). For zero bounce lighting we return the emission of the surface the camera ray hits so it only shows the area light. Two methods were implemented to estimate the direct light at a hit point and both use Monte Carlo to estimate the reflection equation:</p>
 \[ L_{out} \approx \frac{1}{N} \sum_{j=1}^{N} \frac{f(w_j \to w_o)\, L_{in}(w_j)\, \cos\theta_j}{p(w_j)} \]
 
-<p><b>Uniform hemisphere sampling.</b> For this method, we pick random directions uniformly in the hemisphere around the normal, so every direction has the same pdf of \(1/(2\pi)\). The number of samples is the number of lights times the samples per area light. For each direction we shoot a ray from the hit point, starting slightly off the surface so it does not hit itself. If the ray hits something, we take that object's emission, which is zero unless it is a light. Then we multiply by the BSDF and \(\cos\theta\), divide by the pdf, and average over all the samples.</p>
+<p><b>Uniform hemisphere sampling.</b> Here we pick random directions uniformly in the hemisphere around the normal so every direction has the same pdf of \(1/(2\pi)\). The number of samples is the number of lights times the samples per area light. For each direction we shoot a ray from the hit point which starts slightly away from the surface so it does not hit itself. If this ray hits something we take the object's emission. We multiply it with the BSDF and \(\cos\theta\) and divide by the pdf before averaging across all the samples.</p>
 
-<p><b>Light sampling.</b> For this method, we sample the lights directly instead. We go through every light in the scene. For a point light we only take one sample, since every sample would be the same, and for an area light we take the samples per area light. Each sample gives us the direction to the light, the distance to it, the pdf and the incoming radiance. If the light is behind the surface, we skip it. Otherwise we shoot a shadow ray toward the light that stops just before reaching it. If nothing blocks the shadow ray, we add the BSDF times the radiance times \(\cos\theta\), divided by the pdf. We average the samples for each light and then add up all the lights. Thus, this method also works for point lights, which random hemisphere directions would basically never hit.</p>
+<p><b>Light sampling.</b> Instead of hoping a random direction hits a light, this method samples the lights directly. A point light only needs one sample since every sample would be the same, while an area light gets the full number of samples per area light. Each sample gives us the direction to the light, its distance, its pdf and the incoming radiance. If the light is behind the surface we skip it. Otherwise we cast a shadow ray toward the light that stops just short of it, and if nothing blocks it we add the radiance times the BSDF and \(\cos\theta\) divided by the pdf. We average the samples for each light and sum over all lights. This also means point lights work, which random hemisphere directions would basically never hit.</p>
 
 <h3>Uniform hemisphere sampling vs. light sampling</h3>
 <div style="display: flex; flex-direction: column; align-items: center;">
@@ -231,7 +225,7 @@ Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilo
 </table>
 </div>
 
-<p>Comparing the two methods, we can see that the uniform hemisphere results are much noisier, even with the same number of samples. In the bunny scene, the walls and the shadow have a lot of grain. With light sampling, the images are much smoother. This is because sampling the light directly gives us more directions that actually contribute light, while random hemisphere directions often miss the light source.</p>
+<p>Comparing the two methods we can see that the uniform hemisphere results are much noisier. In the bunny scene the walls and the shadow have a lot of grain. With light sampling the images are smoother. This is probably because sampling the light gives more directions that actually contribute light whereas the random hemisphere directions often miss the light source.</p>
 
 <h3>Soft shadow noise vs. number of light rays</h3>
 <div style="display: flex; flex-direction: column; align-items: center;">
@@ -264,20 +258,20 @@ Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilo
 <h2>Part 4: Global Illumination</h2>
 
 <h3>Indirect lighting</h3>
-<p>For indirect lighting, we need to choose a new direction after a ray hits a diffuse surface. We used cosine weighted hemisphere sampling, so directions closer to the surface normal are more likely to be selected. The PDF for the sampled direction is \(\cos\theta/\pi\), and the BSDF for a diffuse surface is the reflectance divided by \(\pi\).</p>
+<p>For indirect lighting we need to pick a new direction each time a ray hits a diffuse surface. We used cosine weighted hemisphere sampling so directions near the normal are more likely, giving a pdf of \(\cos\theta/\pi\).</p>
 
-<p>We implemented indirect lighting recursively. First, the camera ray starts with the maximum ray depth, and we decrease this depth by one for every bounce. At an intersection, we calculate direct lighting using what we implemented in Part 3. If there is still depth left, we sample a new direction from the BSDF, start a new ray slightly away from the surface, and trace that ray again. The returned radiance is then weighted by the BSDF, cosine term and sampling probabilities:</p>
+<p>The bounces are handled recursively. The camera ray starts with the maximum ray depth, which drops by one at every bounce. At each hit we add the direct lighting from Part 3. If there is depth left we sample a new direction from the BSDF, trace a ray from slightly off the surface and weight what comes back:</p>
 
 \[ L_{out} \mathrel{+}= \frac{f(w_i \to w_o)\, L_{in}\, \cos\theta_i}{p(w_i)\, p_{cont}}. \]
 
-<p>We used Russian roulette so rays do not keep bouncing forever. After a bounce, we continue with probability \(p_{cont}=0.65\). If the path stops, we do not add any more indirect light from that path. If it continues, we divide the contribution by 0.65 to account for the paths that stopped. We always allow the first indirect bounce when the maximum depth is greater than 1.</p>
+<p>To stop rays from bouncing forever, we used Russian roulette with a continuation probability of 0.65. We always allow the first indirect bounce if the maximum depth is greater than 1. After that, each bounce has a 65% chance of continuing. When a path continues, we divide its contribution by 0.65 to account for the paths that were stopped. This lets us avoid tracing too many bounces without making the result systematically darker.</p>
 
-<p>For the final camera ray color, we add the emission of the surface that the camera ray hits (zero bounce light) and the lighting returned by the recursive function. We also implemented the option to display only the \(m\)th bounce. For that case, we only add the direct lighting at the selected bounce, and for \(m=0\) we only show emission.</p>
+<p>The final pixel color is the emission at the first hit (zero bounce light) plus the result of the recursion. We also added an option to show only the \(m\)th bounce, where we only add direct lighting at that bounce and show just emission for \(m=0\).</p>
 
 <!-- TODO: confirm with Anne the exact flags used for the Part 4 renders (-s 1024? -l? -m?) -->
 
 <h3>Global illumination</h3>
-<p>Here are the global illumination renders for the bunny and spheres. Both are 480×360 at 1024 samples per pixel. Compared with the Part 3 images, we can see that the ceiling and the shadowed areas are no longer completely black. The red and blue walls also affect the colors of the bunny, spheres and floor because of the indirect bounces.</p>
+<p>Below are the global illumination renders at 480×360 with 1024 samples per pixel. Unlike Part 3 the ceiling and shadows are no longer black, and the red and blue walls tint the floor and objects.</p>
 
 <div style="display: flex; flex-direction: column; align-items: center;">
 <table style="width: 100%; text-align: center; border-collapse: collapse;">
@@ -314,10 +308,10 @@ Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilo
 </table>
 </div>
 
-<p>We also compared direct and indirect lighting separately on the bunny scene. With only direct lighting, the ceiling and the shadow under the bunny are dark because they do not receive light directly from the area light. With only indirect lighting, the whole image looks darker, but we can see the ceiling and the back side of the bunny getting some light. The red and blue color bleeding is also easier to see here. The light source itself appears black in the indirect only image, since its emission is counted separately. When we combine both parts, we get the global illumination result shown above.</p>
+<p>With only direct lighting the ceiling and the shadow under the bunny stay dark since the light can't reach them directly. The indirect only image is darker overall but lights up those areas and makes the color bleeding from the walls easy to see. The light itself is black here because its emission is counted separately. Adding the two together gives the global illumination result above.</p>
 
 <h3>Bounces of light</h3>
-<p>Below we rendered CBbunny.dae with maximum ray depth \(m\) from 0 to 5. For the left column we turned off accumulation so it only shows the \(m\)th bounce. The right column shows the result when all bounces up to \(m\) are added together.</p>
+<p>We rendered CBbunny.dae at 1024 samples per pixel with max ray depth \(m\) from 0 to 5. The left column shows only the \(m\)th bounce and the right column shows all bounces up to \(m\) added together.</p>
 
 <div style="display: flex; flex-direction: column; align-items: center;">
 <table style="width: 100%; text-align: center; border-collapse: collapse;">
@@ -328,112 +322,112 @@ Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilo
 <tr>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_bounce_m0.png" width="400px">
-<figcaption>-m 0</figcaption>
+<figcaption>-s 1024 -m 0</figcaption>
 </td>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_accum_m0.png" width="400px">
-<figcaption>-m 0</figcaption>
+<figcaption>-s 1024 -m 0</figcaption>
 </td>
 </tr>
 <tr>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_bounce_m1.png" width="400px">
-<figcaption>-m 1</figcaption>
+<figcaption>-s 1024 -m 1</figcaption>
 </td>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_accum_m1.png" width="400px">
-<figcaption>-m 1</figcaption>
+<figcaption>-s 1024 -m 1</figcaption>
 </td>
 </tr>
 <tr>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_bounce_m2.png" width="400px">
-<figcaption>-m 2</figcaption>
+<figcaption>-s 1024 -m 2</figcaption>
 </td>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_accum_m2.png" width="400px">
-<figcaption>-m 2</figcaption>
+<figcaption>-s 1024 -m 2</figcaption>
 </td>
 </tr>
 <tr>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_bounce_m3.png" width="400px">
-<figcaption>-m 3</figcaption>
+<figcaption>-s 1024 -m 3</figcaption>
 </td>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_accum_m3.png" width="400px">
-<figcaption>-m 3</figcaption>
+<figcaption>-s 1024 -m 3</figcaption>
 </td>
 </tr>
 <tr>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_bounce_m4.png" width="400px">
-<figcaption>-m 4</figcaption>
+<figcaption>-s 1024 -m 4</figcaption>
 </td>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_accum_m4.png" width="400px">
-<figcaption>-m 4</figcaption>
+<figcaption>-s 1024 -m 4</figcaption>
 </td>
 </tr>
 <tr>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_bounce_m5.png" width="400px">
-<figcaption>-m 5</figcaption>
+<figcaption>-s 1024 -m 5</figcaption>
 </td>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_accum_m5.png" width="400px">
-<figcaption>-m 5</figcaption>
+<figcaption>-s 1024 -m 5</figcaption>
 </td>
 </tr>
 </table>
 </div>
 
-<p>From the left column, the second bounce seems to make the largest difference. The light has bounced off another surface before reaching the part we are looking at, so the ceiling and the side of the bunny away from the light become visible. We can also notice the red and blue colors from the walls appearing on the floor and the bunny. The third bounce is much darker, and the fourth and fifth are even harder to see. This is because the surfaces absorb part of the light each time it bounces. These effects are something we would not see in the basic rasterizer we implemented in HW1, which did not trace bounced lighting.</p>
+<p>The second bounce makes the biggest difference. This light has already bounced off another surface, so it reaches the ceiling and the side of the bunny facing away from the light, and it carries red and blue from the walls onto the floor and bunny. The third bounce is much dimmer and the fourth and fifth are barely visible since some light is absorbed at every bounce. None of this would show up in the HW1 rasterizer, which had no bounced lighting.</p>
 
-<p>Looking at the accumulated images on the right, \(m=0\) only shows the light, and \(m=1\) gives the direct lighting result. When we increase it to \(m=2\), the ceiling and shadows become much brighter. From around \(m=3\) onward, there is not a big visible difference, since the later bounces add much less light.</p>
+<p>In the accumulated column \(m=0\) shows only the light and \(m=1\) matches the direct lighting result. Going to \(m=2\) brightens the ceiling and shadows a lot, but past \(m=3\) the changes are hard to notice.</p>
 
 <h3>Russian roulette</h3>
-<p>We also tried Russian roulette on CBbunny.dae with maximum ray depths of 0, 1, 2, 3, 4 and 100.</p>
+<p>We also tried Russian roulette on CBbunny.dae at 1024 samples per pixel with maximum ray depths of 0, 1, 2, 3, 4 and 100.</p>
 
 <div style="display: flex; flex-direction: column; align-items: center;">
 <table style="width: 100%; text-align: center; border-collapse: collapse;">
 <tr>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_rr_m0.png" width="400px">
-<figcaption>-m 0</figcaption>
+<figcaption>-s 1024 -m 0</figcaption>
 </td>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_rr_m1.png" width="400px">
-<figcaption>-m 1</figcaption>
+<figcaption>-s 1024 -m 1</figcaption>
 </td>
 </tr>
 <tr>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_rr_m2.png" width="400px">
-<figcaption>-m 2</figcaption>
+<figcaption>-s 1024 -m 2</figcaption>
 </td>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_rr_m3.png" width="400px">
-<figcaption>-m 3</figcaption>
+<figcaption>-s 1024 -m 3</figcaption>
 </td>
 </tr>
 <tr>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_rr_m4.png" width="400px">
-<figcaption>-m 4</figcaption>
+<figcaption>-s 1024 -m 4</figcaption>
 </td>
 <td style="text-align: center;">
 <img src="assets/part4/CBbunny_rr_m100.png" width="400px">
-<figcaption>-m 100</figcaption>
+<figcaption>-s 1024 -m 100</figcaption>
 </td>
 </tr>
 </table>
 </div>
 
-<p>Comparing \(m=4\) and \(m=100\), the images look almost the same. With continuation probability 0.65, the chance of surviving another 10 bounces is only about 1.3%. So even though we allow a maximum depth of 100, most paths stop much earlier, and the extra bounces do not change the image very much.</p>
+<p>The \(m=4\) and \(m=100\) images look almost the same. With a continuation probability of 0.65 a path only has about a 1.3% chance of surviving another 10 bounces, so most paths end long before the depth limit.</p>
 
 <h3>Samples per pixel</h3>
-<p>Next we kept the number of light rays at 4 and changed the samples per pixel from 1 to 1024 for CBspheres_lambertian.dae.</p>
+<p>Next we fixed the light rays at 4 and varied the samples per pixel from 1 to 1024 on CBspheres_lambertian.dae.</p>
 
 <div style="display: flex; flex-direction: column; align-items: center;">
 <table style="width: 100%; text-align: center; border-collapse: collapse;">
@@ -477,12 +471,12 @@ Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilo
 </table>
 </div>
 
-<p>At 1 sample per pixel, there is a lot of noise on both spheres and the ceiling. The ceiling is especially noisy because it mainly receives indirect lighting. As we increase the samples, the random noise becomes less noticeable. At 64 samples the shapes are already pretty clear, but we can still see some grain. At 1024 samples the render looks much smoother. This also agrees with Monte Carlo sampling error decreasing like \(1/\sqrt{n}\), so roughly four times as many samples are needed to reduce the noise by half.</p>
+<p>At 1 sample per pixel the spheres and especially the ceiling are very noisy, since the ceiling relies mostly on indirect light. The noise fades as samples increase. By 64 samples the shapes are clear but still grainy, and at 1024 the render is smooth. This matches Monte Carlo error falling like \(1/\sqrt{n}\), so halving the noise takes about four times the samples.</p>
 
 <h2>Part 5: Adaptive Sampling</h2>
 
 <h3>Implementation</h3>
-<p>For Part 5, we implemented adaptive sampling instead of taking the maximum samples for every pixel. The idea is that some pixels converge earlier, so we can stop sampling them and spend more time on noisier pixels. In our implementation, we store the sum of sample brightness values \(x_k\) and also the sum of their squares, \(s_1=\sum x_k\) and \(s_2=\sum x_k^2\). After each batch, we calculate the mean, variance and confidence interval:</p>
+<p>For Part 5, we implemented adaptive sampling so that we don't have to take the maximum number of samples for every pixel. Some pixels need fewer samples to get a stable result, while others are still noisy after many samples. Instead of always sampling up to the maximum, we check whether each pixel has converged after every batch and stop sampling it once it meets the tolerance. To do this, we store the sum of the sample brightness values \(x_k\) and the sum of their squares, \(s_1=\sum x_k\) and \(s_2=\sum x_k^2\). After each batch, we calculate the mean, variance and confidence interval:</p>
 
 \[ \mu = \frac{s_1}{n}, \qquad \sigma^2 = \frac{1}{n - 1}\left(s_2 - \frac{s_1^2}{n}\right), \qquad I = 1.96 \cdot \frac{\sigma}{\sqrt{n}}. \]
 
@@ -520,7 +514,12 @@ Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-ilo
 </table>
 </div>
 
-<p>From the results, the light and the bright walls stopped sampling much earlier than the darker parts. The ceiling, the shadows below the objects and the sides of the bunny and spheres away from the light used more samples. These areas receive more indirect lighting, so the samples vary more. Also, our stopping condition uses the tolerance relative to the mean \(\mu\). Thus, darker pixels need a smaller confidence interval before stopping. For the timings, the bunny took 24.5 seconds and the spheres took 33.8 seconds using 14 threads.</p>
+<p>From the sample rate images, we can see that the darker parts of the scenes generally need more samples. For example, the shadows under the bunny and spheres and the darker sides of the objects are mostly red, meaning they used close to the maximum of 2048 samples. The light source itself converges much earlier, while some areas around the ceiling also need a lot of samples.</p>
+
+<p>One reason is that pixels receiving indirect lighting can have more variation between samples. Our stopping condition also depends on the mean brightness of the pixel, so darker pixels need a smaller confidence interval before they can stop. For the timings, the bunny took 24.5 seconds and the spheres took 33.8 seconds using 14 threads.</p>
+
+<h2>Collaboration</h2>
+<p>We split the work equally between Anne and me. Anne did a larger portion of the code, and I did a larger portion of the writeup.</p>
 
 </div>
 </body>
